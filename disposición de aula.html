@@ -1,0 +1,741 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Disposición musical</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" xintegrity="sha512-BNaRQnYJYiPSqHHDb58B0yaPfCu+Wgds8Gp/gU33kqBtgNS4tSPHuGibyoVBL5gI9kLmbG4WdzzdoabFFDtPaQ==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/lucide/1.0.0/lucide.min.css" rel="stylesheet" />
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        :root {
+            --stage-bg: #f0f4f8;
+            --controls-bg: #ffffff;
+            --student-bg: #ffffff;
+            --student-border: #cbd5e1;
+            --student-text: #1e293b;
+            --role-text: #64748b;
+            --accent-color: #3b82f6;
+            --shadow-color: rgba(0, 0, 0, 0.1);
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--stage-bg);
+            overflow: hidden;
+        }
+        .draggable-item {
+            position: absolute;
+            cursor: grab;
+            touch-action: none;
+            transition: transform 0.2s, box-shadow 0.2s, left 0.5s ease-out, top 0.5s ease-out;
+        }
+        .draggable-item:active {
+            cursor: grabbing;
+            transform: scale(1.05);
+            z-index: 1000;
+            box-shadow: 0 10px 15px -3px var(--shadow-color), 0 4px 6px -2px var(--shadow-color);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .student-item {
+            width: 112px; /* w-28 */
+            height: 112px; /* h-28 */
+            border-radius: 50%;
+        }
+        .resizable {
+            resize: both;
+            overflow: hidden;
+        }
+        .note-item {
+            position: relative;
+            padding: 8px;
+            background-color: #fef08a;
+            border: 1px solid #facc15;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            min-width: 120px;
+            min-height: 50px;
+        }
+        .scene-object {
+             position: relative;
+             min-width: 50px;
+             min-height: 50px;
+        }
+        .scene-object svg {
+            width: 100%;
+            height: 100%;
+            stroke-width: 1.5;
+            color: #475569; /* slate-600 */
+        }
+        .delete-btn {
+            position: absolute;
+            top: -4px;
+            right: -4px;
+            width: 20px;
+            height: 20px;
+            background-color: #ef4444; /* red-500 */
+            color: white;
+            border-radius: 50%;
+            display: none; /* Hidden by default */
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            border: 1px solid white;
+            z-index: 10;
+        }
+        .draggable-item:hover .delete-btn {
+            display: flex;
+        }
+        #stage {
+            background-image:
+                linear-gradient(to right, #e2e8f0 1px, transparent 1px),
+                linear-gradient(to bottom, #e2e8f0 1px, transparent 1px);
+            background-size: 20px 20px;
+            cursor: grab;
+        }
+        #stage.panning {
+            cursor: grabbing;
+        }
+        /* Custom scrollbar */
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #f1f5f9; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    </style>
+</head>
+<body class="h-screen w-screen antialiased text-slate-800 overflow-hidden">
+
+    <!-- Panel -->
+    <aside id="controls-panel" class="absolute top-0 left-0 h-full w-[320px] bg-white shadow-lg flex flex-col z-30 transition-transform duration-300 ease-in-out">
+        <header class="p-4 border-b border-slate-200 bg-slate-50 flex justify-between items-center">
+            <div>
+                <h1 class="text-xl font-bold text-slate-700 flex items-center">
+                    <i data-lucide="music" class="mr-2 text-blue-500"></i>
+                    Disposición musical
+                </h1>
+                <p class="text-sm text-slate-500">Organiza tu clase visualmente.</p>
+            </div>
+            <button id="hide-panel-btn" class="p-1 text-slate-500 rounded-md hover:bg-slate-200" title="Ocultar panel">
+                <i data-lucide="panel-left-close"></i>
+            </button>
+        </header>
+        
+        <div class="flex-grow overflow-y-auto custom-scrollbar p-4 space-y-6">
+            <!-- 1. Students Section -->
+            <div class="space-y-3">
+                <h2 class="font-semibold text-slate-600 flex items-center"><i data-lucide="users" class="mr-2 h-5 w-5"></i>Estudiantes</h2>
+                <textarea id="student-list" rows="4" class="w-full p-2 border border-slate-300 rounded-md text-sm focus:ring-2 focus:ring-blue-400 focus:border-blue-400" placeholder="Nombre Apellido, Instrumento&#10;Otro Nombre, Rol..."></textarea>
+                <button id="add-students-btn" class="w-full bg-blue-500 text-white font-semibold py-2 px-4 rounded-md hover:bg-blue-600 transition flex items-center justify-center">
+                    <i data-lucide="plus-circle" class="mr-2 h-5 w-5"></i>Añadir a la escena
+                </button>
+                <div class="flex space-x-2">
+                    <input type="text" id="list-name" class="w-full p-2 border border-slate-300 rounded-md text-sm" placeholder="Nombre de la lista (ej: 4ºB)">
+                    <button id="save-list-btn" class="p-2 bg-slate-100 rounded-md hover:bg-slate-200" title="Guardar Lista"><i data-lucide="save"></i></button>
+                </div>
+                <select id="load-list-select" class="w-full p-2 border border-slate-300 rounded-md text-sm">
+                    <option value="">Cargar una lista guardada...</option>
+                </select>
+            </div>
+             <!-- 2. Scene Elements -->
+            <div class="space-y-3">
+                <h2 class="font-semibold text-slate-600 flex items-center"><i data-lucide="box-select" class="mr-2 h-5 w-5"></i>Elementos de escena</h2>
+                 <div class="grid grid-cols-2 gap-2 text-xs">
+                    <button class="scene-item-btn flex flex-col items-center justify-center p-2 bg-indigo-100 text-indigo-800 rounded-md hover:bg-indigo-200 transition" data-type="teacher"><i data-lucide="user-square" class="mb-1"></i>Profesor</button>
+                    <button class="scene-item-btn flex flex-col items-center justify-center p-2 bg-yellow-100 text-yellow-800 rounded-md hover:bg-yellow-200 transition" data-type="note"><i data-lucide="sticky-note" class="mb-1"></i>Nota</button>
+                </div>
+            </div>
+            <!-- 3. Layouts Section -->
+            <div class="space-y-3">
+                <h2 class="font-semibold text-slate-600 flex items-center"><i data-lucide="layout-grid" class="mr-2 h-5 w-5"></i>Formaciones</h2>
+                <div class="grid grid-cols-3 gap-2">
+                    <button class="layout-btn flex flex-col items-center p-2 bg-slate-100 rounded-md hover:bg-blue-100" data-layout="grid"><i data-lucide="layout-grid" class="mb-1"></i>Filas</button>
+                    <button class="layout-btn flex flex-col items-center p-2 bg-slate-100 rounded-md hover:bg-blue-100" data-layout="semicircle"><i data-lucide="git-commit" class="mb-1 rotate-90"></i>Semicírculo</button>
+                    <button class="layout-btn flex flex-col items-center p-2 bg-slate-100 rounded-md hover:bg-blue-100" data-layout="orchestra"><i data-lucide="square" class="mb-1"></i>Orquesta</button>
+                    <button class="layout-btn flex flex-col items-center p-2 bg-slate-100 rounded-md hover:bg-blue-100" data-layout="circle"><i data-lucide="circle" class="mb-1"></i>Círculo</button>
+                    <button class="layout-btn flex flex-col items-center p-2 bg-slate-100 rounded-md hover:bg-blue-100" data-layout="choir"><i data-lucide="users" class="mb-1"></i>Coro</button>
+                    <button class="layout-btn flex flex-col items-center p-2 bg-slate-100 rounded-md hover:bg-blue-100" data-layout="curva"><i data-lucide="spline" class="mb-1"></i>Curva</button>
+                    <button id="randomize-btn" class="col-span-3 flex items-center justify-center p-2 bg-amber-100 text-amber-800 rounded-md hover:bg-amber-200"><i data-lucide="shuffle" class="mr-2 h-4 w-4"></i>Aleatorio</button>
+                </div>
+            </div>
+
+            <!-- 4. Dispositions Section -->
+            <div class="space-y-3">
+                <h2 class="font-semibold text-slate-600 flex items-center"><i data-lucide="save" class="mr-2 h-5 w-5"></i>Guardar Disposición</h2>
+                 <div class="flex space-x-2">
+                    <input type="text" id="disposition-name" class="w-full p-2 border border-slate-300 rounded-md text-sm" placeholder="Nombre de la formación...">
+                    <button id="save-disposition-btn" class="p-2 bg-green-100 text-green-800 rounded-md hover:bg-green-200" title="Guardar Disposición"><i data-lucide="save"></i></button>
+                </div>
+                <select id="load-disposition-select" class="w-full p-2 border border-slate-300 rounded-md text-sm">
+                    <option value="">Cargar disposición guardada...</option>
+                </select>
+            </div>
+        </div>
+
+        <footer class="p-4 border-t border-slate-200">
+            <button id="export-btn" class="w-full bg-slate-700 text-white font-semibold py-2 px-4 rounded-md hover:bg-slate-800 transition flex items-center justify-center">
+                <i data-lucide="camera" class="mr-2 h-5 w-5"></i>Exportar como Imagen
+            </button>
+        </footer>
+    </aside>
+
+    <!-- Stage Area -->
+    <main id="stage" class="h-full relative overflow-hidden bg-slate-50 ml-[320px] transition-all duration-300 ease-in-out">
+        <div id="canvas" class="absolute top-0 left-0">
+            <!-- Items will be dynamically added here -->
+        </div>
+         <!-- Zoom Controls -->
+        <div class="absolute bottom-4 right-4 flex flex-col space-y-2 z-20">
+            <button id="zoom-in-btn" class="bg-white rounded-md p-2 shadow-md hover:bg-slate-100"><i data-lucide="zoom-in" class="h-5 w-5"></i></button>
+            <button id="zoom-out-btn" class="bg-white rounded-md p-2 shadow-md hover:bg-slate-100"><i data-lucide="zoom-out" class="h-5 w-5"></i></button>
+            <button id="zoom-reset-btn" class="bg-white rounded-md p-2 shadow-md hover:bg-slate-100"><i data-lucide="expand" class="h-5 w-5"></i></button>
+        </div>
+    </main>
+
+    <!-- Floating Buttons -->
+    <button id="show-panel-btn" class="hidden absolute top-4 left-4 z-40 bg-white rounded-md p-2 shadow-lg hover:bg-slate-100 transition-opacity" title="Mostrar panel">
+        <i data-lucide="panel-left-open"></i>
+    </button>
+    <button id="floating-export-btn" class="hidden absolute bottom-4 left-4 z-40 bg-slate-700 text-white font-semibold py-2 px-4 rounded-md hover:bg-slate-800 transition flex items-center justify-center shadow-lg">
+        <i data-lucide="camera" class="mr-2 h-5 w-5"></i>Exportar como Imagen
+    </button>
+
+    <!-- Custom Alert Modal -->
+    <div id="custom-alert" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+        <div class="bg-white p-6 rounded-lg shadow-xl max-w-sm w-full text-center">
+            <p id="custom-alert-message" class="mb-4 text-slate-700"></p>
+            <button id="custom-alert-close" class="bg-blue-500 text-white font-semibold py-2 px-6 rounded-md hover:bg-blue-600">OK</button>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            lucide.createIcons();
+
+            // DOM Elements
+            const stage = document.getElementById('stage');
+            const mainContent = document.getElementById('stage');
+            const canvas = document.getElementById('canvas');
+            const studentListTextarea = document.getElementById('student-list');
+            const addStudentsBtn = document.getElementById('add-students-btn');
+            const sceneItemBtns = document.querySelectorAll('.scene-item-btn');
+            const layoutBtns = document.querySelectorAll('.layout-btn');
+            const randomizeBtn = document.getElementById('randomize-btn');
+            const exportBtn = document.getElementById('export-btn');
+            const listNameInput = document.getElementById('list-name');
+            const saveListBtn = document.getElementById('save-list-btn');
+            const loadListSelect = document.getElementById('load-list-select');
+            const dispositionNameInput = document.getElementById('disposition-name');
+            const saveDispositionBtn = document.getElementById('save-disposition-btn');
+            const loadDispositionSelect = document.getElementById('load-disposition-select');
+            const customAlert = document.getElementById('custom-alert');
+            const customAlertMessage = document.getElementById('custom-alert-message');
+            const customAlertClose = document.getElementById('custom-alert-close');
+            const zoomInBtn = document.getElementById('zoom-in-btn');
+            const zoomOutBtn = document.getElementById('zoom-out-btn');
+            const zoomResetBtn = document.getElementById('zoom-reset-btn');
+            const controlsPanel = document.getElementById('controls-panel');
+            const hidePanelBtn = document.getElementById('hide-panel-btn');
+            const showPanelBtn = document.getElementById('show-panel-btn');
+            const floatingExportBtn = document.getElementById('floating-export-btn');
+
+            // State
+            let items = [];
+            let activeElement = null;
+            let offset = { x: 0, y: 0 };
+            let zoom = 1;
+            let pan = { x: 0, y: 0, isPanning: false, start: { x: 0, y: 0 } };
+
+            const ICON_DATA = {
+                teacher: { html: `<svg viewBox="0 0 60 90" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="30" cy="15" r="12" stroke="currentColor"/><path d="M30 28V60" stroke="currentColor" stroke-linecap="round"/><path d="M10 45H50" stroke="currentColor" stroke-linecap="round"/><path d="M30 60L10 85" stroke="currentColor" stroke-linecap="round"/><path d="M30 60L50 85" stroke="currentColor" stroke-linecap="round"/></svg>`, w: 60, h: 90, isResizable: true},
+            };
+
+            // --- Core Functions ---
+            function showAlert(message) {
+                customAlertMessage.textContent = message;
+                customAlert.classList.remove('hidden');
+            }
+            customAlertClose.addEventListener('click', () => customAlert.classList.add('hidden'));
+
+            function updateCanvasTransform() {
+                canvas.style.transform = `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`;
+            }
+
+            function createItemElement(item) {
+                const itemDiv = document.createElement('div');
+                itemDiv.id = item.id;
+                itemDiv.className = 'draggable-item';
+
+                switch(item.type) {
+                    case 'student':
+                        itemDiv.classList.add('student-item', 'flex', 'flex-col', 'items-center', 'justify-center', 'p-2', 'bg-white', 'border-2', 'border-slate-300', 'shadow-sm', 'text-center');
+                        const [name, role] = item.text.split(',').map(s => s.trim());
+                        const nameSpan = document.createElement('span');
+                        nameSpan.className = 'font-bold text-sm text-slate-800 select-none break-words';
+                        nameSpan.textContent = name;
+                        itemDiv.appendChild(nameSpan);
+                        if (role) {
+                            const roleSpan = document.createElement('span');
+                            roleSpan.className = 'text-xs text-slate-500 select-none break-words';
+                            roleSpan.textContent = role;
+                            itemDiv.appendChild(roleSpan);
+                        }
+                        break;
+                    
+                    case 'note':
+                        itemDiv.classList.add('note-item', 'resizable');
+                        const textArea = document.createElement('textarea');
+                        textArea.className = 'w-full h-full bg-transparent border-0 focus:ring-0 resize-none text-slate-700 p-0';
+                        textArea.value = item.text;
+                        textArea.addEventListener('input', (e) => {
+                            const currentItem = items.find(i => i.id === item.id);
+                            if (currentItem) currentItem.text = e.target.value;
+                        });
+                        itemDiv.appendChild(textArea);
+                        break;
+                    
+                    default: // Scene objects
+                        itemDiv.classList.add('scene-object', 'flex', 'items-center', 'justify-center');
+                        const data = ICON_DATA[item.type];
+                        if (data) {
+                            itemDiv.style.width = item.width ? `${item.width}px` : `${data.w}px`;
+                            itemDiv.style.height = item.height ? `${item.height}px` : `${data.h}px`;
+                            itemDiv.innerHTML = data.html;
+                            if (data.isResizable) itemDiv.classList.add('resizable');
+                        }
+                        break;
+                }
+
+                // Add delete button to non-student items
+                if (item.type !== 'student') {
+                    const deleteBtn = document.createElement('button');
+                    deleteBtn.className = 'delete-btn';
+                    deleteBtn.innerHTML = '&times;';
+                    deleteBtn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        items = items.filter(i => i.id !== item.id);
+                        render();
+                    });
+                    itemDiv.appendChild(deleteBtn);
+                }
+
+                return itemDiv;
+            }
+
+            function render() {
+                canvas.innerHTML = '';
+                items.forEach(item => {
+                    const element = createItemElement(item);
+                    element.style.left = `${item.x}px`;
+                    element.style.top = `${item.y}px`;
+                    element.addEventListener('mousedown', startDrag);
+                    element.addEventListener('touchstart', startDrag, { passive: false });
+                    canvas.appendChild(element);
+                });
+                lucide.createIcons();
+            }
+
+            // --- Panel Toggle ---
+            hidePanelBtn.addEventListener('click', () => {
+                controlsPanel.classList.add('-translate-x-full');
+                mainContent.classList.remove('ml-[320px]');
+                showPanelBtn.classList.remove('hidden');
+                floatingExportBtn.classList.remove('hidden');
+            });
+
+            showPanelBtn.addEventListener('click', () => {
+                controlsPanel.classList.remove('-translate-x-full');
+                mainContent.classList.add('ml-[320px]');
+                showPanelBtn.classList.add('hidden');
+                floatingExportBtn.classList.add('hidden');
+            });
+            
+            floatingExportBtn.addEventListener('click', () => exportBtn.click());
+
+
+            // --- Pan and Zoom ---
+            stage.addEventListener('wheel', (e) => {
+                e.preventDefault();
+                const scaleAmount = -e.deltaY * 0.001;
+                const newZoom = Math.max(0.2, Math.min(3, zoom + scaleAmount));
+                const rect = stage.getBoundingClientRect();
+                const mouseX = e.clientX - rect.left;
+                const mouseY = e.clientY - rect.top;
+                pan.x = mouseX - (mouseX - pan.x) * (newZoom / zoom);
+                pan.y = mouseY - (mouseY - pan.y) * (newZoom / zoom);
+                zoom = newZoom;
+                updateCanvasTransform();
+            });
+
+            function startPan(e) {
+                if (e.target !== stage && !(e.button === 2 || (e.button === 0 && e.altKey))) return;
+                e.preventDefault();
+                pan.isPanning = true;
+                pan.start.x = e.clientX - pan.x;
+                pan.start.y = e.clientY - pan.y;
+                stage.classList.add('panning');
+            }
+
+            function movePan(e) {
+                if (pan.isPanning) {
+                    e.preventDefault();
+                    pan.x = e.clientX - pan.start.x;
+                    pan.y = e.clientY - pan.start.y;
+                    updateCanvasTransform();
+                }
+            }
+            
+            function endPan() {
+                if (pan.isPanning) {
+                    pan.isPanning = false;
+                    stage.classList.remove('panning');
+                }
+            }
+            
+            stage.addEventListener('mousedown', startPan);
+            stage.addEventListener('mousemove', movePan);
+            stage.addEventListener('mouseup', endPan);
+            stage.addEventListener('mouseleave', endPan);
+            stage.addEventListener('contextmenu', e => e.preventDefault());
+
+            zoomInBtn.addEventListener('click', () => stage.dispatchEvent(new WheelEvent('wheel', { deltaY: -100 })));
+            zoomOutBtn.addEventListener('click', () => stage.dispatchEvent(new WheelEvent('wheel', { deltaY: 100 })));
+            zoomResetBtn.addEventListener('click', () => { zoom = 1; pan.x = 0; pan.y = 0; updateCanvasTransform(); });
+
+            // --- Drag and Drop ---
+            function startDrag(e) {
+                if (e.target.tagName.toLowerCase() === 'textarea' || e.target.classList.contains('delete-btn') || getComputedStyle(e.target).resize !== 'none') return;
+                if (pan.isPanning || (e.button !== 0 && e.type !== 'touchstart')) return;
+                
+                e.preventDefault();
+                e.stopPropagation();
+                activeElement = e.currentTarget;
+                const event = e.touches ? e.touches[0] : e;
+                const rect = activeElement.getBoundingClientRect();
+                offset.x = (event.clientX - rect.left) / zoom;
+                offset.y = (event.clientY - rect.top) / zoom;
+                activeElement.style.zIndex = 1000;
+                document.addEventListener('mousemove', drag);
+                document.addEventListener('touchmove', drag, { passive: false });
+                document.addEventListener('mouseup', endDrag);
+                document.addEventListener('touchend', endDrag);
+            }
+
+            function drag(e) {
+                if (!activeElement) return;
+                e.preventDefault();
+                const event = e.touches ? e.touches[0] : e;
+                const stageRect = stage.getBoundingClientRect();
+                activeElement.style.left = `${(event.clientX - stageRect.left - pan.x) / zoom - offset.x}px`;
+                activeElement.style.top = `${(event.clientY - stageRect.top - pan.y) / zoom - offset.y}px`;
+            }
+
+            function endDrag() {
+                if (!activeElement) return;
+                const item = items.find(s => s.id === activeElement.id);
+                if (item) {
+                    item.x = parseFloat(activeElement.style.left);
+                    item.y = parseFloat(activeElement.style.top);
+                    if (item.type !== 'student') {
+                        item.width = activeElement.offsetWidth;
+                        item.height = activeElement.offsetHeight;
+                    }
+                }
+                activeElement.style.zIndex = '';
+                activeElement = null;
+                document.removeEventListener('mousemove', drag);
+                document.removeEventListener('touchmove', drag);
+                document.removeEventListener('mouseup', endDrag);
+                document.removeEventListener('touchend', endDrag);
+            }
+
+            // --- Layouts ---
+            function applyLayout(layoutType) {
+                const students = items.filter(i => i.type === 'student');
+                const studentCount = students.length;
+                if (studentCount === 0) return;
+
+                const itemWidth = 112;
+                const itemHeight = 112;
+                const spacing = 40;
+                const viewCenterX = (-pan.x + stage.clientWidth / 2) / zoom;
+                const viewCenterY = (-pan.y + stage.clientHeight / 2) / zoom;
+
+                switch (layoutType) {
+                    case 'grid': {
+                        const cols = Math.max(1, Math.floor(Math.sqrt(studentCount * 1.2)));
+                        const rows = Math.ceil(studentCount / cols);
+                        const totalWidth = cols * (itemWidth + spacing) - spacing;
+                        const totalHeight = rows * (itemHeight + spacing) - spacing;
+                        students.forEach((student, i) => {
+                            const row = Math.floor(i / cols);
+                            const col = i % cols;
+                            student.x = viewCenterX - totalWidth / 2 + col * (itemWidth + spacing);
+                            student.y = viewCenterY - totalHeight / 2 + row * (itemHeight + spacing);
+                        });
+                        break;
+                    }
+                    case 'semicircle': {
+                        if (studentCount > 25) {
+                            const backRowCount = Math.ceil(studentCount / 2);
+                            const frontRowCount = studentCount - backRowCount;
+                            const backRowStudents = students.slice(0, backRowCount);
+                            const frontRowStudents = students.slice(backRowCount);
+
+                            const requiredCircumferenceBack = backRowCount * (itemWidth + spacing);
+                            const radiusBack = requiredCircumferenceBack / Math.PI;
+                            
+                            backRowStudents.forEach((student, i) => {
+                                const angle = Math.PI * (i + 0.5) / backRowCount;
+                                student.x = viewCenterX - radiusBack * Math.cos(angle) - itemWidth / 2;
+                                student.y = viewCenterY + radiusBack - radiusBack * Math.sin(angle) - itemHeight / 2;
+                            });
+
+                            const radiusFront = radiusBack - (itemHeight + spacing);
+
+                            frontRowStudents.forEach((student, i) => {
+                                const angle = Math.PI * (i + 0.5) / frontRowCount;
+                                student.x = viewCenterX - radiusFront * Math.cos(angle) - itemWidth / 2;
+                                student.y = viewCenterY + radiusBack - radiusFront * Math.sin(angle) - itemHeight / 2;
+                            });
+                        } else {
+                            const requiredCircumference = studentCount * (itemWidth + spacing);
+                            const radius = requiredCircumference / Math.PI;
+                            students.forEach((student, i) => {
+                                const angle = Math.PI * (i + 0.5) / studentCount;
+                                student.x = viewCenterX - radius * Math.cos(angle) - itemWidth / 2;
+                                student.y = viewCenterY + radius - radius * Math.sin(angle) - itemHeight / 2;
+                            });
+                        }
+                        break;
+                    }
+                    case 'circle': {
+                        const requiredCircumference = studentCount * (itemWidth + spacing * 1.5);
+                        const radius = requiredCircumference / (2 * Math.PI);
+                        students.forEach((student, i) => {
+                            const angle = (2 * Math.PI * i) / studentCount;
+                            student.x = viewCenterX + radius * Math.cos(angle) - itemWidth / 2;
+                            student.y = viewCenterY + radius * Math.sin(angle) - itemHeight / 2;
+                        });
+                        break;
+                    }
+                    case 'orchestra': {
+                        const cols = Math.max(3, Math.ceil(Math.sqrt(studentCount)));
+                        const rows = Math.ceil(studentCount / cols);
+                        const totalWidth = cols * (itemWidth + spacing) + rows * 30;
+                        students.forEach((student, i) => {
+                            const row = Math.floor(i / cols);
+                            const col = i % cols;
+                            const arcOffset = (col - cols / 2) * (col - cols / 2) * 5;
+                            student.x = viewCenterX - totalWidth / 2 + col * (itemWidth + spacing) + (rows - row) * 30;
+                            student.y = viewCenterY - (rows * itemHeight / 2) + row * (itemHeight + spacing) + arcOffset;
+                        });
+                        break;
+                    }
+                    case 'choir': {
+                        let rowsDef;
+                        if (studentCount <= 8) rowsDef = [studentCount];
+                        else if (studentCount <= 20) rowsDef = [Math.ceil(studentCount / 2), Math.floor(studentCount / 2)];
+                        else rowsDef = [Math.ceil(studentCount / 3), Math.ceil((studentCount - Math.ceil(studentCount / 3)) / 2), Math.floor((studentCount - Math.ceil(studentCount / 3)) / 2)];
+                        
+                        let studentIndex = 0;
+                        const totalHeight = rowsDef.length * (itemHeight + spacing);
+                        rowsDef.forEach((count, rowIndex) => {
+                            const rowWidth = count * (itemWidth + spacing);
+                            for (let i = 0; i < count; i++) {
+                                const student = students[studentIndex++];
+                                if (!student) continue;
+                                student.x = viewCenterX - rowWidth / 2 + i * (itemWidth + spacing);
+                                student.y = viewCenterY - totalHeight / 2 + rowIndex * (itemHeight + spacing * 1.5);
+                            }
+                        });
+                        break;
+                    }
+                    case 'curva': {
+                        const createCurvaRow = (studentList, yOffset) => {
+                            const numStudents = studentList.length;
+                            if(numStudents === 0) return;
+
+                            const centerCount = Math.ceil(numStudents * 0.5);
+                            const sideCount = Math.floor((numStudents - centerCount) / 2);
+                            const otherSideCount = numStudents - centerCount - sideCount;
+                            
+                            const centerWidth = centerCount * (itemWidth + spacing);
+                            let studentIndex = 0;
+                            const startX = viewCenterX - centerWidth/2;
+                            
+                            for (let i = 0; i < centerCount; i++) {
+                                studentList[studentIndex].x = startX + i * (itemWidth + spacing);
+                                studentList[studentIndex++].y = viewCenterY + yOffset;
+                            }
+                            
+                            const wingSpacing = itemWidth * 1.1;
+                            const angle = Math.PI / 4;
+                            const centerXStart = studentList[0].x;
+                            const centerXEnd = studentList[centerCount-1].x;
+
+                            for (let i = 0; i < sideCount; i++) {
+                                 studentList[studentIndex].x = centerXStart - Math.cos(angle) * (i + 1) * wingSpacing - itemWidth/2;
+                                 studentList[studentIndex++].y = (viewCenterY + yOffset) + Math.sin(angle) * (i + 1) * wingSpacing;
+                            }
+                            for (let i = 0; i < otherSideCount; i++) {
+                                 studentList[studentIndex].x = centerXEnd + Math.cos(angle) * (i + 1) * wingSpacing + itemWidth/2;
+                                 studentList[studentIndex++].y = (viewCenterY + yOffset) + Math.sin(angle) * (i + 1) * wingSpacing;
+                            }
+                        };
+                        
+                        if (studentCount > 25) {
+                            const backRowCount = Math.ceil(studentCount / 2);
+                            const backRowStudents = students.slice(0, backRowCount);
+                            const frontRowStudents = students.slice(backRowCount);
+                            const ySpacing = itemHeight + spacing * 1.5;
+
+                            createCurvaRow(backRowStudents, -ySpacing / 2);
+                            createCurvaRow(frontRowStudents, ySpacing / 2);
+                        } else {
+                            createCurvaRow(students, 0);
+                        }
+                        break;
+                    }
+                }
+                render();
+            }
+
+            // --- Event Listeners ---
+            addStudentsBtn.addEventListener('click', () => {
+                const names = studentListTextarea.value.split('\n').filter(name => name.trim() !== '');
+                if (names.length === 0) return showAlert("Por favor, ingresa al menos un nombre.");
+                const newStudents = names.map((name, i) => ({ id: `student-${Date.now()}-${i}`, type: 'student', text: name.trim(), x: 0, y: 0 }));
+                const otherItems = items.filter(i => i.type !== 'student');
+                items = [...otherItems, ...newStudents];
+                applyLayout('grid');
+            });
+            
+            sceneItemBtns.forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const type = btn.dataset.type;
+                    const data = ICON_DATA[type] || {};
+                    const x = (-pan.x + stage.clientWidth / 2 - (data.w || 120) / 2) / zoom;
+                    const y = (-pan.y + stage.clientHeight / 2 - (data.h || 50) / 2) / zoom;
+                    const newItem = { id: `${type}-${Date.now()}`, type, x, y };
+                    if (type === 'note') newItem.text = 'Escribe aquí...';
+                    items.push(newItem);
+                    render();
+                });
+            });
+
+            layoutBtns.forEach(btn => btn.addEventListener('click', () => applyLayout(btn.dataset.layout)));
+
+            randomizeBtn.addEventListener('click', () => {
+                const students = items.filter(i => i.type === 'student');
+                const stageWidth = stage.clientWidth / zoom;
+                const stageHeight = stage.clientHeight / zoom;
+                const origin = { x: (-pan.x / zoom), y: (-pan.y / zoom) };
+                students.forEach(student => {
+                     student.x = origin.x + Math.random() * (stageWidth - 112);
+                     student.y = origin.y + Math.random() * (stageHeight - 112);
+                });
+                render();
+            });
+            
+            exportBtn.addEventListener('click', () => {
+                if (items.length === 0) return showAlert("No hay nada que exportar.");
+                const originalTransform = canvas.style.transform;
+                canvas.style.transform = '';
+                const bounds = items.reduce((acc, item) => {
+                    const el = document.getElementById(item.id);
+                    const width = el ? el.offsetWidth : 112;
+                    const height = el ? el.offsetHeight : 112;
+                    return { minX: Math.min(acc.minX, item.x), minY: Math.min(acc.minY, item.y), maxX: Math.max(acc.maxX, item.x + width), maxY: Math.max(acc.maxY, item.y + height) };
+                }, { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity });
+
+                const padding = 100;
+                html2canvas(canvas, {
+                    backgroundColor: getComputedStyle(document.documentElement).getPropertyValue('--stage-bg'),
+                    x: bounds.minX - padding,
+                    y: bounds.minY - padding,
+                    width: (bounds.maxX - bounds.minX) + 2 * padding,
+                    height: (bounds.maxY - bounds.minY) + 2 * padding,
+                    scale: 2
+                }).then(canvasImage => {
+                    const link = document.createElement('a');
+                    link.download = 'disposicion-musical.png';
+                    link.href = canvasImage.toDataURL('image/png');
+                    link.click();
+                }).catch(err => {
+                    console.error("Error al exportar:", err);
+                    showAlert("Ocurrió un error al exportar la imagen.");
+                }).finally(() => {
+                    canvas.style.transform = originalTransform;
+                });
+            });
+
+            // --- Local Storage Management ---
+            function saveToLocalStorage(key, data) { localStorage.setItem(key, JSON.stringify(data)); }
+            function loadFromLocalStorage(key) { const data = localStorage.getItem(key); return data ? JSON.parse(data) : null; }
+
+            saveListBtn.addEventListener('click', () => {
+                const name = listNameInput.value.trim();
+                const list = studentListTextarea.value;
+                if (!name || !list) return showAlert('Por favor, ingresa un nombre y una lista.');
+                const lists = loadFromLocalStorage('studentLists') || {};
+                lists[name] = list;
+                saveToLocalStorage('studentLists', lists);
+                populateListSelect();
+                listNameInput.value = '';
+                showAlert(`Lista "${name}" guardada.`);
+            });
+
+            loadListSelect.addEventListener('change', () => {
+                const name = loadListSelect.value;
+                if (!name) return;
+                studentListTextarea.value = (loadFromLocalStorage('studentLists') || {})[name] || '';
+            });
+
+            function populateListSelect() {
+                const lists = loadFromLocalStorage('studentLists') || {};
+                loadListSelect.innerHTML = '<option value="">Cargar una lista...</option>';
+                Object.keys(lists).sort().forEach(name => {
+                    const option = document.createElement('option');
+                    option.value = name; option.textContent = name;
+                    loadListSelect.appendChild(option);
+                });
+            }
+
+            saveDispositionBtn.addEventListener('click', () => {
+                const name = dispositionNameInput.value.trim();
+                if (!name || items.length === 0) return showAlert('Ingresa un nombre y añade elementos a la escena.');
+                const dispositions = loadFromLocalStorage('dispositions') || {};
+                dispositions[name] = items;
+                saveToLocalStorage('dispositions', dispositions);
+                populateDispositionSelect();
+                dispositionNameInput.value = '';
+                showAlert(`Disposición "${name}" guardada.`);
+            });
+
+            loadDispositionSelect.addEventListener('change', () => {
+                const name = loadDispositionSelect.value;
+                if (!name) return;
+                items = (loadFromLocalStorage('dispositions') || {})[name] || [];
+                render();
+            });
+            
+            function populateDispositionSelect() {
+                const dispositions = loadFromLocalStorage('dispositions') || {};
+                loadDispositionSelect.innerHTML = '<option value="">Cargar disposición...</option>';
+                Object.keys(dispositions).sort().forEach(name => {
+                    const option = document.createElement('option');
+                    option.value = name; option.textContent = name;
+                    loadDispositionSelect.appendChild(option);
+                });
+            }
+
+            // Initial Load
+            populateListSelect();
+            populateDispositionSelect();
+            updateCanvasTransform();
+        });
+    </script>
+</body>
+</html>
+
+
